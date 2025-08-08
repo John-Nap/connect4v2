@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect 4 - Single Player or AI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-image: url('https://images.unsplash.com/photo-1521587760476-6c12a4b040da?ixlib=rb-4.0.3&auto=format&fit=crop&w=1350&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            margin: 0;
+            padding: 20px;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: inherit;
+            filter: blur(10px);
+            z-index: -1;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            display: inline-block;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        #mode-selection, #game-container {
+            margin: 20px auto;
+        }
+
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(7, 60px);
+            gap: 5px;
+            background-color: #0055ff;
+            padding: 10px;
+            border-radius: 10px;
+            width: fit-content;
+        }
+
+        .cell {
+            width: 60px;
+            height: 60px;
+            background-color: white;
+            border-radius: 50%;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .cell.red {
+            background-color: red;
+        }
+
+        .cell.yellow {
+            background-color: yellow;
+        }
+
+        .cell.bounce {
+            animation: bounce 0.3s ease-out;
+        }
+
+        @keyframes bounce {
+            0% { transform: translateY(-20px); }
+            50% { transform: translateY(10px); }
+            100% { transform: translateY(0); }
+        }
+
+        #game-info {
+            margin: 20px;
+            font-size: 1.2em;
+        }
+
+        #current-player {
+            font-weight: bold;
+        }
+
+        #game-status {
+            color: #555;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        #mode-selection button {
+            display: inline-block;
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Connect 4</h1>
+        <div id="mode-selection">
+            <p>Choose Game Mode:</p>
+            <button id="two-player-btn">Two Players</button>
+            <button id="ai-btn">Play Against AI</button>
+        </div>
+        <div id="game-container" style="display: none;">
+            <div id="game-info">
+                <p>Current Player: <span id="current-player">Red</span></p>
+                <p id="game-status">Game in Progress</p>
+            </div>
+            <div id="game-board"></div>
+            <button id="reset-button">Reset Game</button>
+        </div>
+    </div>
+    <!-- Audio elements: Place drop.mp3 and cheer.mp3 in the same directory -->
+    <audio id="drop-sound" src="drop.mp3"></audio>
+    <audio id="cheer-sound" src="cheer.mp3"></audio>
+    <!-- Confetti library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <script>
+        // Game state
+        const rows = 6;
+        const cols = 7;
+        let board = [];
+        let currentPlayer = 'red';
+        let gameActive = false;
+        let isAIMode = false;
+
+        // Initialize the game
+        function initializeGame(mode) {
+            isAIMode = mode === 'ai';
+            board = Array(rows).fill().map(() => Array(cols).fill(null));
+            gameActive = true;
+            currentPlayer = 'red';
+            document.getElementById('current-player').textContent = 'Red';
+            document.getElementById('game-status').textContent = 'Game in Progress';
+            document.getElementById('mode-selection').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block';
+            renderBoard();
+            if (isAIMode && currentPlayer === 'yellow') {
+                setTimeout(makeAIMove, 500);
+            }
+        }
+
+        // Render the game board
+        function renderBoard(animatedCell = null) {
+            const gameBoard = document.getElementById('game-board');
+            gameBoard.innerHTML = '';
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    if (board[row][col]) {
+                        cell.classList.add(board[row][col]);
+                        if (animatedCell && row === animatedCell.row && col === animatedCell.col) {
+                            cell.classList.add('bounce');
+                        }
+                    }
+                    cell.dataset.col = col;
+                    cell.addEventListener('click', handleCellClick);
+                    gameBoard.appendChild(cell);
+                }
+            }
+        }
+
+        // Handle cell click
+        function handleCellClick(event) {
+            if (!gameActive || (isAIMode && currentPlayer === 'yellow')) return;
+            const col = parseInt(event.target.dataset.col);
+            const row = getLowestEmptyRow(col);
+            if (row === -1) return; // Column is full
+
+            board[row][col] = currentPlayer;
+            try {
+                document.getElementById('drop-sound').play().catch(e => console.error('Error playing drop sound:', e));
+            } catch (e) {
+                console.error('Error accessing drop sound:', e);
+            }
+            renderBoard({ row, col });
+            if (checkWin(row, col)) {
+                document.getElementById('game-status').textContent = `${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)} Wins!`;
+                gameActive = false;
+                try {
+                    document.getElementById('cheer-sound').play().catch(e => console.error('Error playing cheer sound:', e));
+                    confetti({
+                        particleCount: 100,
+                        spread: 70,
+                        origin: { y: 0.6 }
+                    });
+                } catch (e) {
+                    console.error('Error with win effects:', e);
+                }
+                return;
+            }
+            if (checkDraw()) {
+                document.getElementById('game-status').textContent = 'Draw!';
+                gameActive = false;
+                return;
+            }
+            currentPlayer = currentPlayer === 'red' ? 'yellow' : 'red';
+            document.getElementById('current-player').textContent = currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1);
+            if (isAIMode && gameActive && currentPlayer === 'yellow') {
+                setTimeout(makeAIMove, 500);
+            }
+        }
+
+        // AI makes a random move
+        function makeAIMove() {
+            if (!gameActive || currentPlayer !== 'yellow') return;
+            const validCols = [];
+            for (let col = 0; col < cols; col++) {
+                if (getLowestEmptyRow(col) !== -1) {
+                    validCols.push(col);
+                }
+            }
+            if (validCols.length === 0) return;
+            const col = validCols[Math.floor(Math.random() * validCols.length)];
+            const row = getLowestEmptyRow(col);
+            board[row][col] = 'yellow';
+            try {
+                document.getElementById('drop-sound').play().catch(e => console.error('Error playing drop sound:', e));
+            } catch (e) {
+                console.error('Error accessing drop sound:', e);
+            }
+            renderBoard({ row, col });
+            if (checkWin(row, col)) {
+                document.getElementById('game-status').textContent = 'Yellow (AI) Wins!';
+                gameActive = false;
+                try {
+                    document.getElementById('cheer-sound').play().catch(e => console.error('Error playing cheer sound:', e));
+                    confetti({
+                        particleCount: 100,
+                        spread: 70,
+                        origin: { y: 0.6 }
+                    });
+                } catch (e) {
+                    console.error('Error with win effects:', e);
+                }
+                return;
+            }
+            if (checkDraw()) {
+                document.getElementById('game-status').textContent = 'Draw!';
+                gameActive = false;
+                return;
+            }
+            currentPlayer = 'red';
+            document.getElementById('current-player').textContent = 'Red';
+        }
+
+        // Find the lowest empty row in a column
+        function getLowestEmptyRow(col) {
+            for (let row = rows - 1; row >= 0; row--) {
+                if (!board[row][col]) return row;
+            }
+            return -1;
+        }
+
+        // Check for a win
+        function checkWin(row, col) {
+            return (
+                checkDirection(row, col, 1, 0) || // Vertical
+                checkDirection(row, col, 0, 1) || // Horizontal
+                checkDirection(row, col, 1, 1) || // Diagonal /
+                checkDirection(row, col, 1, -1)   // Diagonal \
+            );
+        }
+
+        // Check for four in a row in a given direction
+        function checkDirection(row, col, rowDir, colDir) {
+            let count = 1;
+            const player = board[row][col];
+
+            // Check positive direction
+            for (let i = 1; i < 4; i++) {
+                const newRow = row + i * rowDir;
+                const newCol = col + i * colDir;
+                if (
+                    newRow < 0 || newRow >= rows ||
+                    newCol < 0 || newCol >= cols ||
+                    board[newRow][newCol] !== player
+                ) break;
+                count++;
+            }
+
+            // Check negative direction
+            for (let i = 1; i < 4; i++) {
+                const newRow = row - i * rowDir;
+                const newCol = col - i * colDir;
+                if (
+                    newRow < 0 || newRow >= rows ||
+                    newCol < 0 || newCol >= cols ||
+                    board[newRow][newCol] !== player
+                ) break;
+                count++;
+            }
+
+            return count >= 4;
+        }
+
+        // Check for a draw
+        function checkDraw() {
+            return board.every(row => row.every(cell => cell !== null));
+        }
+
+        // Reset the game
+        function resetGame() {
+            document.getElementById('game-container').style.display = 'none';
+            document.getElementById('mode-selection').style.display = 'block';
+            gameActive = false;
+        }
+
+        // Event listeners for mode selection
+        document.getElementById('two-player-btn').addEventListener('click', () => {
+            console.log('Two Players button clicked');
+            initializeGame('two-player');
+        });
+        document.getElementById('ai-btn').addEventListener('click', () => {
+            console.log('AI button clicked');
+            initializeGame('ai');
+        });
+        document.getElementById('reset-button').addEventListener('click', resetGame);
+    </script>
+</body>
+</html>
